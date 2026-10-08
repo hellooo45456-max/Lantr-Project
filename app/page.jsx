@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 const siteMarkup = String.raw`
   <div class="page-glow glow-one"></div><div class="page-glow glow-two"></div>
-  <header class="site-header"><a class="wordmark" href="#top">JAYDEN <span>ZHENG</span></a><nav aria-label="Primary navigation"><a href="#about">About</a><a href="#spider">Spider</a><a href="#life">Life</a></nav><a class="header-link" href="#spider">Hear the story <span>↓</span></a></header>
+  <header class="site-header"><a class="wordmark" href="#top">JAYDEN <span>ZHENG</span></a><nav aria-label="Primary navigation"><a href="#about">About</a><a href="#spider">Spider</a><a href="#life">Life</a><a href="/opportunities">Opportunities</a></nav><a class="header-link" href="/opportunities">Find opportunities <span>↗</span></a></header>
   <main id="top">
     <section class="hero">
       <div class="hero-copy"><p class="eyebrow">MUSICIAN · RUNNER · CREATOR</p><h1>Hi, I’m<br><em>Jayden.</em></h1><p class="hero-intro">I play violin, chase ideas, and am composing a piece called <i>Spider</i> — a violin and piano adventure that scurries, skitters, and surprises.</p><div class="hero-actions"><a class="button button-dark" href="#spider">Meet Spider <span>↘</span></a><a class="text-link" href="#about">A little about me <span>→</span></a></div></div>
@@ -19,7 +19,7 @@ const siteMarkup = String.raw`
     </section>
     <section class="closing"><p class="eyebrow">JAYDEN ZHENG / 2026</p><h2>Thanks for<br><em>stopping by.</em></h2><a class="button button-dark" href="#top">Back to the top <span>↑</span></a></section>
   </main>
-  <footer><a class="wordmark" href="#top">JAYDEN <span>ZHENG</span></a><p>Made with music and curiosity.</p><a href="mailto:hello@example.com">Say hello ↗</a></footer>
+  <footer id="footer"><a class="wordmark" href="#top">JAYDEN <span>ZHENG</span></a><p>© 2026 Jayden Zheng. Made with music and curiosity.</p><a href="mailto:hello@example.com">Say hello ↗</a></footer>
 `;
 
 export default function Home() {

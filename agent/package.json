@@ -1,0 +1,13 @@
+{
+  "name": "opportunity-agent",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.4.0",
+    "zod": "^4.0.0"
+  }
+}
