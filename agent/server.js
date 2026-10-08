@@ -15,7 +15,14 @@ const jobs = new Map();
 loadEnvFile(new URL('./.env', import.meta.url));
 
 function loadEnvFile(url) {
-  const lines = readFileSync(url, 'utf8').split(/\r?\n/);
+  let contents;
+  try {
+    contents = readFileSync(url, 'utf8');
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return;
+    throw error;
+  }
+  const lines = contents.split(/\r?\n/);
   for (const line of lines) {
     const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
     if (match && !process.env[match[1]]) process.env[match[1]] = match[2];
