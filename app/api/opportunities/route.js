@@ -1,5 +1,4 @@
 import { timingSafeEqual } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,20 +28,24 @@ function configuration() {
   return { sitePassword, agentUrl: agentUrl.replace(/\/$/, ""), agentSecret, supabaseUrl, supabaseServiceKey };
 }
 
-function database(config) {
-  return createClient(config.supabaseUrl, config.supabaseServiceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
+async function databaseRequest(config, path, options = {}) {
+  const response = await fetch(config.supabaseUrl.replace(/\/$/, "") + "/rest/v1/" + path, {
+    ...options,
+    cache: "no-store",
+    headers: {
+      apikey: config.supabaseServiceKey,
+      Authorization: "Bearer " + config.supabaseServiceKey,
+      ...(options.headers || {}),
+    },
   });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error("Unable to load opportunities.");
+  return data;
 }
 
-async function readOpportunities(config, status) {
-  const { data, error } = await database(config)
-    .from("opportunities")
-    .select(OPPORTUNITY_FIELDS)
-    .eq("status", status)
-    .order("found_at", { ascending: false });
-  if (error) throw new Error("Unable to load opportunities.");
-  return data;
+function readOpportunities(config, status) {
+  const query = new URLSearchParams({ select: OPPORTUNITY_FIELDS, status: "eq." + status, order: "found_at.desc" });
+  return databaseRequest(config, "opportunities?" + query);
 }
 
 async function agentRequest(path, options, config) {
@@ -88,16 +91,14 @@ export async function POST(request) {
       const id = Number(body.id);
       if (!Number.isSafeInteger(id) || id < 1) return json({ error: "Invalid opportunity id." }, 400);
       if (!["approved", "rejected"].includes(body.status)) return json({ error: "Invalid decision." }, 400);
-      const { data, error } = await database(config)
-        .from("opportunities")
-        .update({ status: body.status, decided_at: new Date().toISOString() })
-        .eq("id", id)
-        .eq("status", "new")
-        .select(OPPORTUNITY_FIELDS)
-        .maybeSingle();
-      if (error) throw new Error("Unable to update opportunity.");
-      if (!data) return json({ error: "This opportunity is no longer awaiting review." }, 409);
-      return json({ opportunity: data });
+      const query = new URLSearchParams({ id: "eq." + id, status: "eq.new" });
+      const rows = await databaseRequest(config, "opportunities?" + query, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({ status: body.status, decided_at: new Date().toISOString() }),
+      });
+      if (!rows?.[0]) return json({ error: "This opportunity is no longer awaiting review." }, 409);
+      return json({ opportunity: rows[0] });
     }
     return json({ error: "Unknown action." }, 400);
   } catch (error) {
