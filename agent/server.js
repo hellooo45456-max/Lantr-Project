@@ -144,12 +144,73 @@ const opportunityOutput = z.object({
   note: z.string(),
 });
 
+const opportunitySaveInput = z.object({
+  title: z.string().min(1),
+  url: z.string().min(1),
+  sourceExcerpt: z.string().nullable(),
+  whyItFits: z.string().nullable(),
+});
+
+async function saveOpportunity(job, input) {
+  const opportunityUrl = new URL(input.url);
+  if (!['http:', 'https:'].includes(opportunityUrl.protocol)) {
+    throw new Error('Opportunity URLs must use HTTP or HTTPS.');
+  }
+  const existing = job.savedOpportunities.get(input.url);
+  if (existing) return existing;
+
+  const apiUrl = required('SUPABASE_URL').replace(/\/$/, '');
+  const serviceKey = required('SUPABASE_SERVICE_KEY');
+  const response = await fetch(apiUrl + '/rest/v1/opportunities?on_conflict=url', {
+    method: 'POST',
+    signal: job.controller.signal,
+    headers: {
+      apikey: serviceKey,
+      Authorization: 'Bearer ' + serviceKey,
+      'content-type': 'application/json',
+      Prefer: 'resolution=ignore-duplicates,return=representation',
+    },
+    body: JSON.stringify({
+      title: input.title,
+      url: input.url,
+      source_excerpt: input.sourceExcerpt || null,
+      why_it_fits: input.whyItFits || null,
+      status: 'new',
+    }),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to save opportunity: Supabase returned HTTP ' + response.status + '.');
+  }
+
+  const rows = await response.json();
+  const outcome = { saved: rows.length > 0, url: input.url, row: rows[0] || null };
+  job.savedOpportunities.set(input.url, outcome);
+  if (outcome.saved) job.addedOpportunities.push(outcome.row);
+  job.activity.push({ type: 'save', url: input.url, saved: outcome.saved, at: Date.now() });
+  console.log('[' + job.id + '] ' + (outcome.saved ? 'saved' : 'skipped existing') + ' opportunity: ' + input.url);
+  return outcome;
+}
+
+function makeUpdateSiteTool(job) {
+  return tool({
+    name: 'update_site',
+    description: 'Save one verified opportunity to the site. Call this exactly once for every opportunity you keep. Duplicate URLs are skipped safely.',
+    parameters: opportunitySaveInput,
+    async execute(input) {
+      const outcome = await saveOpportunity(job, input);
+      return outcome.saved
+        ? 'Saved: ' + outcome.url
+        : 'Skipped because this URL is already saved: ' + outcome.url;
+    },
+  });
+}
+
 function makeAgent(job, profile) {
   return new Agent({
     name: 'Verified opportunity finder',
     model: 'gpt-6-astra',
     outputType: opportunityOutput,
-    tools: [webSearchTool({ searchContextSize: 'low' }), makeOpenPageTool(job)],
+    tools: [webSearchTool({ searchContextSize: 'low' }), makeOpenPageTool(job), makeUpdateSiteTool(job)],
     modelSettings: {
       maxTokens: 3000,
       reasoning: { effort: 'low' },
@@ -161,6 +222,7 @@ function makeAgent(job, profile) {
       'Print-quality evidence matters more than the number of results. For every shortlisted item, read an official organiser page using open_page and check: exact age eligibility, location or online access, and that applications/registration are open now. ' +
       'Do not assume school, skill level, citizenship, experience, or parental permission. Include no more than five items and only items you actually checked. ' +
       'For each item, supply short direct evidence for eligibility and availability plus a short source excerpt. ' +
+      'For every opportunity you keep, call update_site exactly once before returning your final output. Map eligibility evidence to whyItFits and source excerpt to sourceExcerpt. ' +
       'If evidence is missing, investigate another official page before accepting or rejecting it. If you cannot verify enough, return fewer items. ' +
       'List meaningful exclusions in ruledOut and explain uncertainty in note. Never invent results, dates, eligibility, availability, or quotes.',
   });
@@ -212,6 +274,14 @@ async function runJob(job) {
     await stream.completed;
     if (job.controller.signal.aborted) throw new Error(job.timedOut ? 'Job exceeded the four-minute limit.' : 'Job was cancelled.');
     job.results = stream.finalOutput;
+    for (const opportunity of job.results.opportunities) {
+      await saveOpportunity(job, {
+        title: opportunity.title,
+        url: opportunity.url,
+        sourceExcerpt: opportunity.sourceExcerpt,
+        whyItFits: opportunity.eligibilityEvidence,
+      });
+    }
     job.activity.push({ type: 'checking', at: Date.now() });
     job.status = 'completed';
   } catch (error) {
@@ -265,6 +335,8 @@ const server = createServer(async (request, response) => {
         searches: 0,
         pageReads: 0,
         activity: [],
+        savedOpportunities: new Map(),
+        addedOpportunities: [],
         startedAt: Date.now(),
         controller: new AbortController(),
         timedOut: false,
